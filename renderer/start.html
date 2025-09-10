@@ -1,0 +1,55 @@
+﻿<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>시작 • Dashboard</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data:">
+  <style>
+    :root { color-scheme: light dark; }
+    html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,Arial; }
+    .wrap { height:100%; display:flex; align-items:center; justify-content:center; }
+    .card { padding:40px 48px; border-radius:16px; border:1px solid #ddd; background:#fff; box-shadow:0 10px 30px rgba(0,0,0,.08);}
+    .row { margin:10px 0 }
+    .label { color:#666; margin-right:8px }
+    .val { display:inline-block; padding:2px 8px; border-radius:8px; background:#f2f2f2 }
+    .btns { display:flex; gap:12px; margin-top:18px }
+    button { padding:10px 18px; border-radius:12px; border:1px solid #bbb; background:#f7f7f7; cursor:pointer; }
+    button:hover { background:#efefef }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="row"><span class="label">현재 버전</span><span id="ver" class="val">-</span></div>
+      <div class="row"><span class="label">업데이트 상태</span><span id="st" class="val">대기</span></div>
+      <div class="btns">
+        <button id="btn-check">업데이트 확인</button>
+        <button id="btn-start">시작</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (sel)=>document.querySelector(sel);
+    function setStatus(t){ $('#st').textContent = t; }
+    // 버전 표기
+    window.app.getVersion().then(v=>{ $('#ver').textContent = v; });
+
+    // 업데이트 이벤트 수신(간단한 텍스트만)
+    window.updates.onStatus((type, payload)=>{
+      if(type==="checking") setStatus("확인 중");
+      else if(type==="available") setStatus("업데이트 있음");
+      else if(type==="not-available") setStatus("최신 버전");
+      else if(type==="progress") setStatus("다운로드 중");
+      else if(type==="downloaded") setStatus("다운로드 완료 (재시작 시 적용)");
+      else if(type==="error") setStatus("오류");
+    });
+
+    // 버튼
+    $('#btn-check').addEventListener('click', ()=>{ window.updates.check(); });
+    $('#btn-start').addEventListener('click', ()=>{ location.href = "index.html"; });
+    // Enter/Space도 시작
+    window.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('#btn-start').click(); }});
+  </script>
+</body>
+</html>

@@ -1,57 +1,1068 @@
-﻿<!doctype html>
-<html>
-  <head>
+<!doctype html>
+<html lang="ko">
+<head>
     <meta charset="utf-8" />
-    <title>my fantasy</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard Runner (Electron - Sprint2)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-      body{font-family:system-ui,Segoe UI,Arial;margin:40px}
-      .tag{display:inline-block;background:#eee;padding:4px 8px;border-radius:6px}
-      .row{margin:12px 0}
-      .meter{height:10px;background:#eee;border-radius:6px;overflow:hidden;max-width:360px}
-      .meter #bar{height:100%;width:5%}
-      button{padding:8px 12px;border-radius:8px;border:1px solid #ccc;background:#fafafa;cursor:pointer}
-      button:active{transform:translateY(1px)}
+        #err {
+            position: fixed;
+            inset: 0;
+            background: #111e;
+            color: #fff;
+            padding: 16px;
+            white-space: pre-wrap;
+            font-family: ui-monospace,Consolas,monospace;
+            display: none;
+            z-index: 99999;
+        }
     </style>
-  </head>
-  <body>
-    <h1>🚀 my fantasy <span id="ver" class="tag"></span></h1>
-
-    <div class="row">
-      <button id="check">업데이트 확인</button>
-      <span id="status" class="tag">대기 중</span>
-    </div>
-
-    <div class="meter"><div id="bar"></div></div>
-
     <script>
-      (async () => {
-        const ver = await window.api.getVersion();
-        document.getElementById("ver").textContent = "v" + ver;
-
-        const btn = document.getElementById("check");
-        const status = document.getElementById("status");
-        const bar = document.getElementById("bar");
-
-        btn.addEventListener("click", () => {
-          status.textContent = "업데이트 확인 중...";
-          window.api.checkForUpdates();
-        });
-
-        window.api.onUpdateAvailable(() => {
-          status.textContent = "새 버전 발견! 다운로드 중...";
-          bar.style.width = "10%";
-        });
-
-        window.api.onUpdateProgress((p) => {
-          status.textContent = `다운로드 ${p.percent.toFixed(1)}%`;
-          bar.style.width = Math.max(5, Math.min(100, p.percent)) + "%";
-        });
-
-        window.api.onUpdateDownloaded(() => {
-          status.textContent = "다운로드 완료. 재시작 대기...";
-          bar.style.width = "100%";
-        });
-      })();
+        function showErr(title, msg) {
+            let el = document.getElementById('err');
+            if (!el) { el = document.createElement('pre'); el.id = 'err'; document.body.appendChild(el); }
+            el.style.display = 'block';
+            el.textContent = `[${title}]\n` + msg;
+        }
+        window.addEventListener('error', e => showErr('Runtime Error', (e && (e.message || e.error)) || 'Unknown'));
+        window.addEventListener('unhandledrejection', e => showErr('Unhandled Rejection', (e.reason && (e.reason.stack || e.reason.message)) || String(e.reason)));
+        console.log('[probe] index.html loaded');
     </script>
-  </body>
+</head>
+<body class="bg-slate-50">
+    <div id="root" class="min-h-screen"></div>
+    <script type="text/babel" data-presets="env,react" data-plugins="proposal-class-properties,proposal-nullish-coalescing-operator,proposal-optional-chaining">
+
+const Trophy = (p)=> <span {...p}>🏆</span>;
+const Coins = (p)=> <span {...p}>🪙</span>;
+const Sword = (p)=> <span {...p}>🗡️</span>;
+const Dice6 = (p)=> <span {...p}>🎲</span>;
+const ShoppingCart = (p)=> <span {...p}>🛒</span>;
+const Waves = (p)=> <span {...p}>🌊</span>;
+const Plus = (p)=> <span {...p}>＋</span>;
+const Settings2 = (p)=> <span {...p}>⚙️</span>;
+const ClipboardList = (p)=> <span {...p}>📋</span>;
+
+const { useState, useEffect, useMemo, useRef } = React;
+
+// ---- Config ----
+const CFG = {
+  statPointsPerLevel: 5,
+  xpDaily: { ex: 40, study: 30, sleep: 20 },
+  xpWeekly: { STR: 120, DEX: 140, VIT: 140, INT: 120, ARC: 120, WIL: 240 },
+};
+
+// ▶ Feature Flags (FF)
+// - HIDE_LEGEND_AURA: 전설 오라 UI/효과 숨김
+// - HIDE_TOWN_FACILITIES: 마을 시설 UI 숨김
+// - SETITEM_SYSTEM: 세트아이템 계산/툴팁 활성화
+// - ADVANCED_TOOLTIP: 고급 툴팁(테마 등 추가 정보)
+// - EQUIP_GUARDS: 장착 가드(안내/제약) 활성화
+const FF = {
+  HIDE_LEGEND_AURA: true,
+  HIDE_TOWN_FACILITIES: true,
+  SETITEM_SYSTEM: true,
+  ADVANCED_TOOLTIP: true,
+  EQUIP_GUARDS: true,
+};
+
+// ---- Helpers ----
+function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+function randBetween(a, b) { return a + Math.random() * (b - a); }
+
+// Weighted draw with LUK bias (for tiers)
+function drawTierWithLuck(luk, extraBias = 0) {
+  const baseBias = Math.min(0.02 * luk, 0.5);
+  const bias = Math.min(baseBias + extraBias, 0.5);
+  const base = { Common: 100, Uncommon: 45, Rare: 12, Epic: 3, Legend: 1 };
+  const scaled = {
+    Common: base.Common * (1 - 0.6 * bias),
+    Uncommon: base.Uncommon * (1 - 0.3 * bias),
+    Rare: base.Rare * (1 + 0.4 * bias),
+    Epic: base.Epic * (1 + 0.8 * bias),
+    Legend: base.Legend * (1 + 1.2 * bias),
+  };
+  const sum = Object.values(scaled).reduce((a, b) => a + b, 0);
+  let r = Math.random() * sum;
+  for (const [k, v] of Object.entries(scaled)) { if (r < v) return k; r -= v; }
+  return "Common";
+}
+
+// ── 아이템 풀 (무기/방패/방어구/장신구 포함) ──
+const ITEM_POOL = {
+  Common: [
+    "초급 한손검", "낡은 장갑", "천 상의", "천 하의", "가죽 장화",
+    "구리 반지", "은 귀걸이", "가죽 목걸이", "목재 방패",
+    "하급 회복약", "기본 재료 묶음"
+  ],
+  Uncommon: [
+    "훈련용 곡검(양손)", "가죽 두건", "가죽 팔보호구", "견고한 벨트",
+    "정제 재료", "기민의 비약"
+  ],
+  Rare: [
+    "오크 대검(양손)", "강철 흉갑", "강철 각반", "강철 방패",
+    "마력의 문장", "약점 식별 렌즈", "희귀 재료"
+  ],
+  Epic: ["영웅의 장검", "불굴의 견갑", "심연의 서약", "기사의 방패", "맹독 그림자단검", "전설의 조각(파편)"],
+  Legend: ["왕의 인장", "운명의 동전", "시간의 모래", "수호의 방패"]
+};
+
+// 세트 보너스 정의
+const SET_BONUSES = {
+  Knight: {
+    name: '기사단 세트',
+    pieces: {2: [{k:'def_pct',v:10},{k:'block_pct',v:10}], 3:[{k:'atk_pct',v:10},{k:'wp_flat',v:5}]}
+  },
+  Arcane: {
+    name: '비전 세트',
+    pieces: {2: [{k:'crit_chance_pct',v:5},{k:'mpregen_pct',v:10}], 3:[{k:'exp_gain_pct',v:10},{k:'atk_pct',v:5}]}
+  },
+  Vanguard: {
+    name: '전위 세트',
+    pieces: {2: [{k:'hp_pct',v:10},{k:'def_pct',v:10}], 3:[{k:'block_pct',v:10},{k:'thorns',v:5}]}
+  }
+};
+
+// ---- 테마 기반 특수효과 풀 ----
+const THEME_POOLS = {
+  // generic by slot
+  weapon: [
+    {k:'atk_pct',min:6,max:12}, {k:'crit_chance_pct',min:3,max:8}, {k:'lifesteal_pct',min:1,max:3}
+  ],
+  shield: [
+    {k:'def_pct',min:6,max:12}, {k:'block_pct',min:8,max:15}, {k:'thorns',min:4,max:10}
+  ],
+  armor: [
+    {k:'def_pct',min:6,max:12}, {k:'hp_pct',min:6,max:12}, {k:'thorns',min:3,max:8}
+  ],
+  accessory: [
+    {k:'crit_chance_pct',min:3,max:8}, {k:'mpregen_pct',min:8,max:15}, {k:'exp_gain_pct',min:6,max:12}, {k:'silver_gain_pct',min:6,max:12}
+  ],
+  // themed
+  knight_off: [
+    {k:'atk_pct',min:7,max:12}, {k:'def_pct',min:5,max:10}
+  ],
+  knight_def: [
+    {k:'def_pct',min:8,max:14}, {k:'block_pct',min:6,max:12}
+  ],
+  guardian: [
+    {k:'block_pct',min:10,max:18}, {k:'def_pct',min:6,max:12}, {k:'thorns',min:4,max:10}
+  ],
+  vanguard_def: [
+    {k:'hp_pct',min:8,max:14}, {k:'def_pct',min:6,max:12}
+  ],
+  assassin: [
+    {k:'crit_chance_pct',min:5,max:10}, {k:'atk_pct',min:6,max:12}, {k:'lifesteal_pct',min:1,max:3}
+  ],
+  berserker: [
+    {k:'atk_pct',min:8,max:14}, {k:'crit_chance_pct',min:4,max:9}
+  ],
+  arcane: [
+    {k:'mpregen_pct',min:10,max:18}, {k:'exp_gain_pct',min:6,max:12}, {k:'atk_pct',min:4,max:9}
+  ],
+  luck: [
+    {k:'crit_chance_pct',min:5,max:10}, {k:'silver_gain_pct',min:10,max:18}, {k:'exp_gain_pct',min:6,max:12}
+  ]
+};
+
+const THEMES = {
+  // 무기
+  '영웅의 장검': 'knight_off',
+  '오크 대검(양손)': 'berserker',
+  '맹독 그림자단검': 'assassin',
+  // 방패/방어구
+  '기사의 방패': 'guardian',
+  '강철 방패': 'vanguard_def',
+  '강철 흉갑': 'knight_def',
+  '강철 각반': 'vanguard_def',
+  '불굴의 견갑': 'vanguard_def',
+  // 장신구
+  '마력의 문장': 'arcane',
+  '약점 식별 렌즈': 'arcane',
+  '시간의 모래': 'arcane',
+  '운명의 동전': 'luck',
+};
+
+// 🔧 아이템 정의(타입/스탯/공격력/방어력/막기/세트/고유능력·스킬)
+// fields: type, mod(기본 스탯), wp(무기공), df(방어력), block(%), setKey,
+//         uniqueAbilities:[{name,desc,when?,chance?,dur?}], uniqueSkill:{name,cooldown,desc}
+const ITEM_DEFS = {
+  // 무기
+  "초급 한손검": { type: "weapon_1h", wp: 8, mod: { STR: 1 } },
+  "영웅의 장검": { type: "weapon_1h", wp: 18, mod: { STR: 3, DEX: 1 }, setKey:'Knight',
+    uniqueAbilities:[{name:'용사의 의지', desc:'적 처치 시 10초간 공격력 +10% (중첩 1)', when:'onKill', chance:1, dur:10}] },
+  "훈련용 곡검(양손)": { type: "weapon_2h", wp: 12, mod: { STR: 2 } },
+  "오크 대검(양손)": { type: "weapon_2h", wp: 26, mod: { STR: 4, WIL: 1 },
+    uniqueAbilities:[{name:'오크의 광분', desc:'HP 50% 이하에서 치명타 피해 +30%', when:'onBelowHP', threshold:0.5}] },
+  // 에픽: 맹독 그림자단검(구 독단검)
+  "맹독 그림자단검": { type: "weapon_1h", wp: 16, mod:{ DEX:2 },
+    uniqueAbilities:[
+      {name:'맹독의 베기', desc:'적중 시 20% 확률로 3초간 출혈', when:'onHit', chance:0.20, dur:3},
+      {name:'마비 독', desc:'적중 시 8% 확률로 1초간 마비', when:'onHit', chance:0.08, dur:1}
+    ] },
+
+  // 방패(무기 슬롯)
+  "목재 방패": { type: "shield", df: 3, block: 8, mod: { VIT: 1 } },
+  "강철 방패": { type: "shield", df: 7, block: 15, mod: { VIT: 2, WIL: 1 }, setKey:'Vanguard',
+    uniqueAbilities:[{name:'튼튼한 방어', desc:'막기 성공 시 다음 피격 피해 -10%', when:'onBlock', chance:1, dur:5}] },
+  "기사의 방패": { type: "shield", df: 9, block: 18, mod: { VIT: 3 }, setKey:'Knight',
+    uniqueAbilities:[{name:'견고한 자세', desc:'막기 시 5초간 방어력 +15%', when:'onBlock', chance:1, dur:5}] },
+  // 전설 방패(스킬 보유)
+  "수호의 방패": { type: "shield", df: 14, block: 25, mod:{ VIT:3, WIL:2 }, setKey:'Knight',
+    uniqueAbilities:[{name:'수호자', desc:'자신 뒤의 아군 막기 +10% (상시)'}],
+    uniqueSkill:{ name:'수호의 결계', cooldown:'60s', desc:'6초 동안 결계 내 아군 방어력 +30%, 받는 피해 30%를 자신이 대신 받음' }
+  },
+
+  // 방어구 (df 중심)
+  "가죽 두건": { type: "armor_head", df: 2, mod: { WIL: 1 } },
+  "천 상의": { type: "armor_chest", df: 1, mod: { ARC: 1 } },
+  "강철 흉갑": { type: "armor_chest", df: 8, mod: { VIT: 2 }, setKey:'Knight',
+    uniqueAbilities:[{name:'철갑', desc:'피격 시 5초간 받는 피해 -5% (쿨 10s)', when:'onDamaged', chance:1, dur:5}] },
+  "천 하의": { type: "armor_legs", df: 1, mod: { DEX: 1 } },
+  "강철 각반": { type: "armor_legs", df: 6, mod: { VIT: 2 }, setKey:'Vanguard',
+    uniqueAbilities:[{name:'하중 분산', desc:'이동 중 받는 피해 -10%'}] },
+  "가죽 팔보호구": { type: "armor_arms", df: 2, mod: { DEX: 1 } },
+  "불굴의 견갑": { type: "armor_arms", df: 4, mod: { VIT: 2 }, setKey:'Vanguard',
+    uniqueAbilities:[{name:'불굴', desc:'HP 50% 이하 시 방어력 +20%', when:'onBelowHP', threshold:0.5}] },
+  "가죽 장화": { type: "armor_feet", df: 2, mod: { DEX: 1 } },
+  "낡은 장갑": { type: "armor_arms", df: 1, mod: { DEX: 1 } },
+
+  // 장신구 (레전더리는 스킬 포함)
+  "구리 반지": { type: "ring", mod: { LUK: 1 } },
+  "마력의 문장": { type: "necklace", mod: { ARC: 2 }, setKey:'Arcane',
+    uniqueAbilities:[{name:'비전 증폭', desc:'스킬 MP 소모 -10%'}] },
+  "약점 식별 렌즈": { type: "earring", mod: { INT: 2 }, setKey:'Arcane',
+    uniqueAbilities:[{name:'약점 노출', desc:'첫 적중 대상 5초간 치명확률 +10%', when:'onHit', chance:1, dur:5, once:true}] },
+  "심연의 서약": { type: "ring", mod: { WIL: 2 },
+    uniqueAbilities:[{name:'심연의 계약', desc:'HP 30% 이하 시 생흡 +3%', when:'onBelowHP', threshold:0.3}] },
+
+  // Legend 액세서리들 — 고유능력 + 고유스킬
+  "왕의 인장": { type: "ring", mod: { CHA: 2 },
+    uniqueAbilities:[{name:'명성', desc:'전투 후 실버 획득 +10%'}],
+    uniqueSkill:{ name:'왕의 칙령', cooldown:'90s', desc:'8초간 파티 공격력 +15%'} },
+  // ✅ 동전: 목걸이 -> 반지 로 변경 (같은 세트 장착 시 세트효과 가능)
+  "운명의 동전": { type: "ring", mod: { LUK: 2 }, setKey:'Arcane',
+    uniqueAbilities:[{name:'행운의 편향', desc:'치명타 확률 +5%'}],
+    uniqueSkill:{ name:'동전의 심판', cooldown:'1회/전투', desc:'드랍 등급을 한 번 재굴림'} },
+  "시간의 모래": { type: "earring", mod: { DEX: 2 }, setKey:'Arcane',
+    uniqueAbilities:[{name:'시간 흐름', desc:'MP 재생 +15%'}],
+    uniqueSkill:{ name:'시간 왜곡', cooldown:'120s', desc:'6초간 이동/행동 속도 +30%'} },
+
+  // 기타
+  "은 귀걸이": { type: "earring", mod: { CHA: 1 } },
+  "가죽 목걸이": { type: "necklace", mod: { WIL: 1 } },
+  "하급 회복약": { type: "consumable", mod: {} },
+  "기민의 비약": { type: "consumable", mod: {} },
+  "기본 재료 묶음": { type: "material", mod: {} },
+  "정제 재료": { type: "material", mod: {} },
+  "희귀 재료": { type: "material", mod: {} },
+  "전설의 조각(파편)": { type: "material", mod: {} },
+};
+
+function uid(){ return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function getItemDef(name){ return ITEM_DEFS[name] || { type: "weapon_1h", wp: 6, mod: { STR: 1 } }; }
+
+function makeNamedItem(name, tier){
+  const base = getItemDef(name);
+  const item = {
+    id: uid(), name, tier, type: base.type,
+    mod: { ...(base.mod||{}) }, wp: base.wp||0, df: base.df||0, block: base.block||0,
+    effects: [], setKey: base.setKey, theme: THEMES[name],
+    uniqueAbilities: base.uniqueAbilities ? JSON.parse(JSON.stringify(base.uniqueAbilities)) : [],
+    uniqueSkill: base.uniqueSkill ? { ...base.uniqueSkill } : null,
+  };
+  // Rare 이상은 랜덤 특수효과(고유와 별개)
+  item.effects = (tier==='Rare'||tier==='Epic'||tier==='Legend')? rollEffectsFor(item): [];
+  return item;
+}
+
+// 특수효과 롤 — Rare:1 / Epic:2 / Legend:3
+function rollEffectsFor(item){
+  const tier = item.tier;
+  const count = tier==='Rare'?1: tier==='Epic'?2: tier==='Legend'?3: 0;
+  if(count<=0) return [];
+  // 기본 풀 (타입)
+  let pool = [];
+  if(item.type==='weapon_1h' || item.type==='weapon_2h') pool = THEME_POOLS.weapon;
+  else if(item.type==='shield') pool = THEME_POOLS.shield;
+  else if(String(item.type).startsWith('armor_')) pool = THEME_POOLS.armor;
+  else if(['ring','earring','necklace'].includes(item.type)) pool = THEME_POOLS.accessory;
+  // 테마 우선
+  if(item.theme && THEME_POOLS[item.theme]) pool = THEME_POOLS[item.theme];
+
+  const effects=[]; const used=new Set();
+  for(let i=0;i<count && i<pool.length;i++){
+    let pickIdx=0; let safe=0;
+    do{ pickIdx = Math.floor(Math.random()*pool.length); safe++; } while(used.has(pickIdx) && safe<20);
+    used.add(pickIdx);
+    const e = pool[pickIdx];
+    const val = Math.round(randBetween(e.min, e.max));
+    effects.push({k:e.k, v:val});
+  }
+  return effects;
+}
+
+function makeItem(tier){
+  const name = pick(ITEM_POOL[tier]);
+  return makeNamedItem(name, tier);
+}
+
+// 합성 유틸
+function addStatMods(a={}, b={}){ const out = { ...a }; for(const k of Object.keys(b||{})) out[k] = (out[k]||0) + (b[k]||0); return out; }
+function mergeEffects(effectsArr){ const t={}; for(const e of effectsArr){ t[e.k]=(t[e.k]||0)+e.v; } return t; }
+
+// 판매가(간단)
+const SELL_PRICE = { Common: 10, Uncommon: 30, Rare: 80, Epic: 200, Legend: 500 };
+
+// 타입 라벨
+function typeLabel(t){
+  const map = {
+    weapon_1h: '한손 무기', weapon_2h: '양손 무기', shield: '방패(무기 슬롯)',
+    armor_head: '머리', armor_chest: '상의', armor_legs: '하의', armor_arms: '팔', armor_feet: '발(신발)',
+    ring: '반지', earring: '귀걸이', necklace: '목걸이',
+    consumable: '소비', material: '재료'
+  };
+  return map[t] || t;
+}
+
+class ErrorBoundary extends React.Component { constructor(props){ super(props); this.state={ error:null }; } static getDerivedStateFromError(error){ return { error }; } componentDidCatch(error, info){ console.error('Preview runtime error:', error, info); } render(){ if(this.state.error){ return (<div style={{padding:'12px',border:'1px solid #fca5a5',background:'#fff1f2',borderRadius:12,color:'#b91c1c'}}><div style={{fontWeight:'bold'}}>미리보기 런타임 에러</div><div style={{fontSize:12,marginTop:4}}>{String(this.state.error?.message||this.state.error)}</div><div style={{fontSize:11,marginTop:6,color:'#7f1d1d'}}>에러를 고치면 즉시 미리보기 복구됩니다.</div></div>);} return this.props.children; } }
+
+function Dashboard() {
+        // [PATCH:DATA] external data helpers + autoload
+        function mergeArrayById(targetArr, srcArr){
+          try{
+            if (!Array.isArray(targetArr) || !Array.isArray(srcArr)) return;
+            const index = new Map(targetArr.map((o,i)=>[(o&&('id'in o)?o.id:((o&&'name'in o)?o.name:i)), i]));
+            for (const obj of srcArr){
+              const key = (obj&&('id'in obj))?obj.id:((obj&&'name'in obj)?obj.name:undefined);
+              if (key!=null && index.has(key)){
+                const i = index.get(key);
+                targetArr[i] = Object.assign({}, targetArr[i]||{}, obj);
+              } else {
+                targetArr.push(obj);
+              }
+            }
+          }catch(e){ console.warn('mergeArrayById fail', e); }
+        }
+        function applyDashDataV1(data){
+          try{
+            if (data.ITEM_DEFS) mergeArrayById(ITEM_DEFS, data.ITEM_DEFS);
+            if (data.SET_BONUSES){
+              if (Array.isArray(SET_BONUSES)) mergeArrayById(SET_BONUSES, data.SET_BONUSES);
+              else if (typeof SET_BONUSES==='object') Object.assign(SET_BONUSES, data.SET_BONUSES);
+            }
+            if (data.ITEM_POOL) mergeArrayById(ITEM_POOL, data.ITEM_POOL);
+            if (data.THEMES) mergeArrayById(THEMES, data.THEMES);
+            if (typeof setLog==='function') setLog(l => [`[DATA] imported ${new Date().toLocaleString()}`, ...(l||[])].slice(0,200));
+          }catch(e){ console.warn('applyDashDataV1 fail', e); }
+        }
+        useEffect(()=>{
+          try{
+            const raw = localStorage.getItem('dashDataV1');
+            if (raw){
+              const data = JSON.parse(raw);
+              applyDashDataV1(data);
+            }
+          }catch(e){ console.warn('dashDataV1 load fail', e); }
+        }, []);
+
+  // --- Core state ---
+  const [lvl, setLvl] = useState(7);
+  const [xp, setXp] = useState(2200);
+  const [unspent, setUnspent] = useState(0);
+  const [stats, setStats] = useState({ STR: 10, DEX: 9, VIT: 9, INT: 8, ARC: 8, CHA: 8, WIL: 9, LUK: 7 });
+  const [log, setLog] = useState([]);
+
+  // 🔧 Dev: 빠른 미리보기용 스위치
+  const [devFast, setDevFast] = useState(true);
+  const [devMount, setDevMount] = useState({ equipment: true, inventory: true, quests: true, weekly: true, test: true, log: true });
+
+  // 레벨/NXP
+  const nxp = useMemo(() => nxpForLevel(lvl), [lvl]);
+  const curLevelBase = useMemo(()=> totalXpForLevel(lvl-1), [lvl]);
+  const nxpLeft = Math.max(nxp - (xp - curLevelBase), 0);
+  function nxpForLevel(L){ return Math.round(60 + 20 * L + 8 * L * L); }
+  function totalXpForLevel(L) { if (L <= 0) return 0; let s = 0; for (let i = 1; i <= L; i++) s += nxpForLevel(i); return s; }
+  function addXp(amount, reason="XP"){ setXp(prev=>{ let newXp=prev+amount; let curLvl=lvl; let unsp=unspent; let base=totalXpForLevel(curLvl-1); let need=nxpForLevel(curLvl); const events=[{type:"xp",detail:{amount,reason}}]; while(newXp-base>=need){curLvl+=1;base=totalXpForLevel(curLvl-1);need=nxpForLevel(curLvl);unsp+=CFG.statPointsPerLevel;events.push({type:"levelup",detail:{lvl:curLvl,points:CFG.statPointsPerLevel}});} if(events.length) setLog(l=>[...events.reverse(),...l]); setLvl(curLvl); setUnspent(unsp); return newXp; }); }
+
+  // --- Daily / Weekly ---
+  const [daily, setDaily] = useState({ ex:false, study:false, sleep:false });
+  const [dCountWeek, setDCountWeek] = useState(0);
+  function submitDaily(){ let gained=0,cnt=0; if(daily.ex){gained+=CFG.xpDaily.ex;cnt++;} if(daily.study){gained+=CFG.xpDaily.study;cnt++;} if(daily.sleep){gained+=CFG.xpDaily.sleep;cnt++;} if(!cnt){ setLog(l=>[{type:"warn",detail:"일일퀘 선택 없음"},...l]); return;} addXp(gained,`일일퀘(${cnt}개)`); setDCountWeek(v=>clamp(v+cnt,0,21)); setDaily({ex:false,study:false,sleep:false}); }
+
+  const [wq, setWq] = useState({ STR_pts:0, DEX_form:0, DEX_wins:0, VIT_recov:0, VIT_weightOK:false, INT_units:0, ARC_read:0, ARC_world:0, WIL_streak:false });
+  function computeWeeklyQuestXP(){ const res={awards:[], total:0}; if(wq.STR_pts>=4){res.awards.push(["STR+1 달성", CFG.xpWeekly.STR]); res.total+=CFG.xpWeekly.STR;} if((wq.DEX_form+Math.min(wq.DEX_wins,5))>=5){res.awards.push(["DEX+1 달성", CFG.xpWeekly.DEX]); res.total+=CFG.xpWeekly.DEX;} const vit=wq.VIT_recov+(wq.VIT_weightOK?2:0); if(vit>=6){res.awards.push(["VIT+1 달성", CFG.xpWeekly.VIT]); res.total+=CFG.xpWeekly.VIT;} if(wq.INT_units>=6){res.awards.push(["INT+1 달성", CFG.xpWeekly.INT]); res.total+=CFG.xpWeekly.INT;} if((wq.ARC_read+wq.ARC_world)>=5){res.awards.push(["ARC+1 달성", CFG.xpWeekly.ARC]); res.total+=CFG.xpWeekly.ARC;} if(wq.WIL_streak){res.awards.push(["WIL+1 달성", CFG.xpWeekly.WIL]); res.total+=CFG.xpWeekly.WIL;} return res; }
+
+  function buildWeights(){ let w={ STR:.2, DEX:.2, VIT:.2, INT:.15, ARC:.15, WIL:.05, CHA:.025, LUK:.025 }; const sum=Object.values(w).reduce((a,b)=>a+b,0); for(const k in w) w[k]/=sum; return w; }
+  function weightedDistribute(P,K,weights){ const statsPool=Object.keys(weights); const picks=[]; const bag=[...statsPool]; for(let i=0;i<K&&bag.length;i++){ const sum=bag.reduce((a,s)=>a+(weights[s]||0),0); let r=Math.random()*sum; for(let j=0;j<bag.length;j++){ const s=bag[j]; r-=(weights[s]||0); if(r<=0){ picks.push(s); bag.splice(j,1); break; } } } const alloc=[]; for(let i=0;i<P;i++){ const s=picks[Math.floor(Math.random()*picks.length)]||"STR"; const row=alloc.find(a=>a.stat===s); if(row) row.delta+=1; else alloc.push({stat:s,delta:1}); } return {alloc}; }
+
+  function rollWeekly(){ const D=clamp(dCountWeek,0,21); const P_base=D<=8?1:D<=15?2:3; const luckProb=Math.min(0.02*stats.LUK,0.4); const LUK_Bonus=Math.random()<=luckProb?1:0; let P_total=P_base+LUK_Bonus; const wk=computeWeeklyQuestXP(); if(wk.total>0){ let K=1+Math.floor(Math.random()*3); if(Math.random()<=luckProb) K=Math.min(3,K+1); const result=weightedDistribute(P_total,K,buildWeights()); const newStats={...stats}; result.alloc.forEach(({stat,delta})=>{ newStats[stat]=(newStats[stat]||0)+delta; }); setStats(newStats); setLog(l=>[{type:"weekly", detail:{D,P_base,LUK_Bonus,P_total,K,alloc:result.alloc}}, ...l]); addXp(wk.total,`주간퀘 달성(총 ${wk.total}XP)`); wk.awards.forEach(([n,v])=>setLog(l=>[{type:"xp",detail:{amount:v,reason:`주간퀘: ${n}`}},...l])); } else { P_total=0; setLog(l=>[{type:'warn', detail:'주간퀘 미달(P 지급 없음)'} ,...l]); } setDCountWeek(0); setWq({ STR_pts:0, DEX_form:0, DEX_wins:0, VIT_recov:0, VIT_weightOK:false, INT_units:0, ARC_read:0, ARC_world:0, WIL_streak:false }); }
+
+  // --- 인벤토리 & 장비 상태 ---
+  const [inv, setInv] = useState([]);
+  const [equip, setEquip] = useState({
+    weaponR: null, weaponL: null,
+    head: null, chest: null, legs: null, arms: null, feet: null,
+    ear1: null, ear2: null, necklace: null, ring1: null, ring2: null,
+  });
+
+  // 최초 진입시 테스트 장비 시드
+  const [devSeeded, setDevSeeded] = useState(false);
+  useEffect(()=>{
+    if(devSeeded) return;
+    const seeds = [
+      makeNamedItem('맹독 그림자단검','Epic'),
+      makeNamedItem('수호의 방패','Legend'),
+      makeNamedItem('영웅의 장검','Epic'),
+      makeNamedItem('기사의 방패','Epic'),
+      makeNamedItem('강철 흉갑','Rare'),
+      makeNamedItem('강철 방패','Rare'),
+      makeNamedItem('불굴의 견갑','Epic'),
+      makeNamedItem('강철 각반','Rare'),
+      makeNamedItem('마력의 문장','Rare'),
+      makeNamedItem('운명의 동전','Legend'),
+    ];
+    setInv(cur=>[...seeds, ...cur]);
+    setDevSeeded(true);
+  }, [devSeeded]);
+
+  function addItemToInv(item){ setInv(arr=>[item, ...arr]); }
+  function removeFromInv(id){ setInv(arr=>arr.filter(x=>x.id!==id)); }
+
+  function isTwoHandEquipped(){ return equip.weaponR && equip.weaponL && (equip.weaponR.id === equip.weaponL.id) && equip.weaponR.type==='weapon_2h'; }
+
+  function equipItem(id){
+    const it = inv.find(x=>x.id===id); if(!it) return;
+    const t = it.type;
+    if(t==='material' || t==='consumable'){ setLog(l=>[{type:'warn', detail:'장비 불가 아이템입니다'}, ...l]); return; }
+
+    if(t==='weapon_2h' || t==='weapon_1h' || t==='shield'){
+      if(isTwoHandEquipped()){
+        const two = equip.weaponR; setEquip(e=>({ ...e, weaponR: null, weaponL: null })); addItemToInv(two);
+      }
+      if(t==='weapon_2h'){
+        if(equip.weaponR && !(equip.weaponL && equip.weaponR.id===equip.weaponL.id && equip.weaponR.type==='weapon_2h')) addItemToInv(equip.weaponR);
+        if(equip.weaponL && !(equip.weaponR && equip.weaponR.id===equip.weaponL.id && equip.weaponL.type==='weapon_2h')) addItemToInv(equip.weaponL);
+        setEquip(e=>({ ...e, weaponR: it, weaponL: it }));
+        removeFromInv(id);
+        setLog(l=>[{ type:'equip', detail:{ slot: '양손', name: it.name, tier: it.tier } }, ...l]);
+        return;
+      } else {
+        if(!equip.weaponR){ setEquip(e=>({ ...e, weaponR: it })); }
+        else if(!equip.weaponL){ setEquip(e=>({ ...e, weaponL: it })); }
+        else { addItemToInv(equip.weaponR); setEquip(e=>({ ...e, weaponR: it })); }
+        removeFromInv(id);
+        setLog(l=>[{ type:'equip', detail:{ slot: !equip.weaponR? '오른손':'왼손', name: it.name, tier: it.tier } }, ...l]);
+        return;
+      }
+    }
+
+    const map = {
+      armor_head: 'head', armor_chest: 'chest', armor_legs: 'legs', armor_arms: 'arms', armor_feet: 'feet',
+      necklace: 'necklace', ring: ['ring1','ring2'], earring: ['ear1','ear2']
+    };
+    const slotKey = map[t];
+    if(!slotKey){ setLog(l=>[{type:'warn', detail:`알 수 없는 타입: ${t}`}, ...l]); return; }
+
+    const put = (slot)=>{ const prev = equip[slot]; setEquip(e=>({ ...e, [slot]: it })); removeFromInv(id); if(prev) addItemToInv(prev); setLog(l=>[{ type:'equip', detail:{ slot, name: it.name, tier: it.tier } }, ...l]); };
+
+    if(Array.isArray(slotKey)){
+      if(!equip[slotKey[0]]) put(slotKey[0]);
+      else if(!equip[slotKey[1]]) put(slotKey[1]);
+      else put(slotKey[0]);
+    } else { put(slotKey); }
+  }
+
+  function unequip(slot){
+    if((slot==='weaponR' || slot==='weaponL') && isTwoHandEquipped()){
+      const cur = equip.weaponR; if(!cur) return; setEquip(e=>({ ...e, weaponR: null, weaponL: null })); addItemToInv(cur); setLog(l=>[{type:'unequip', detail:{slot:'양손', name:cur.name}}, ...l]); return;
+    }
+    const cur = equip[slot]; if(!cur) return; setEquip(e=>({ ...e, [slot]: null })); addItemToInv(cur); setLog(l=>[{type:'unequip', detail:{slot, name: cur.name}}, ...l]);
+  }
+
+  function sellItem(id){ const it = inv.find(x=>x.id===id); if(!it) return; const gain = SELL_PRICE[it.tier] || 5; setSilver(s=>s+gain); removeFromInv(id); setLog(l=>[{ type:'shop', detail:{ buy:`판매: ${it.name}`, cost:`+${gain}S` } }, ...l]); }
+
+  // 세트 카운트
+  function countSetEquipped(key){
+    const slots = ['weaponR','weaponL','head','chest','legs','arms','feet','ear1','ear2','necklace','ring1','ring2'];
+    const seenTwoHand = isTwoHandEquipped();
+    const ids = new Set();
+    let c=0; for(const s of slots){ const it=equip[s]; if(!it) continue; if(seenTwoHand && s==='weaponL') continue; if(ids.has(it.id)) continue; ids.add(it.id); if(it.setKey===key) c++; }
+    return c;
+  }
+
+  // 총 장비 보정치 & 전투수치 합산
+  const gear = useMemo(()=>{
+    let stat = {};
+    let wp = 0, df = 0, block = 0;
+    let effects = [];
+    let sets = {};
+    let abilities = [];
+    let skills = [];
+    const slots = ['weaponR','weaponL','head','chest','legs','arms','feet','ear1','ear2','necklace','ring1','ring2'];
+    const seenTwoHand = isTwoHandEquipped();
+    for(const s of slots){
+      const it = equip[s]; if(!it) continue;
+      if(seenTwoHand && (s==='weaponL')) continue; // 양손 중복 방지
+      stat = addStatMods(stat, it.mod||{});
+      wp += it.wp||0; df += it.df||0; block += it.block||0;
+      if(it.effects?.length) effects = effects.concat(it.effects);
+      if(it.setKey){ sets[it.setKey] = (sets[it.setKey]||0) + 1; }
+      if(it.uniqueAbilities?.length) abilities = abilities.concat(it.uniqueAbilities.map(a=>({from:it.name, ...a})));
+      if(it.uniqueSkill) skills.push({from:it.name, ...it.uniqueSkill});
+    }
+    // 세트 효과 적용
+    let setEffects = [];
+    const activeSets = [];
+    if (FF.SETITEM_SYSTEM) {
+      for (const [key,cnt] of Object.entries(sets)){
+        const def = SET_BONUSES[key]; if(!def) continue;
+        let totalApplied = 0; const pieces = def.pieces;
+        const levels = Object.keys(pieces).map(n=>parseInt(n)).sort((a,b)=>a-b);
+        for(const n of levels){ if(cnt>=n){ setEffects = setEffects.concat(pieces[n]); totalApplied = n; } }
+        if(totalApplied>0) activeSets.push({ key, name:def.name, count:cnt, applied: totalApplied });
+      }
+    }
+    const effTotals = mergeEffects(effects.concat(setEffects));
+    return { stat, wp, df, block, effTotals, activeSets, abilities, skills };
+  }, [equip]);
+
+  // 장비 포함 실효 스탯
+  const effStats = useMemo(()=>{ const out={...stats}; for(const k of Object.keys(gear.stat)) out[k]=(out[k]||0)+gear.stat[k]; return out; }, [stats, gear]);
+
+  // --- 경제/전투/웨이브/가챠 ---
+  const [silver, setSilver] = useState(1180);
+  function pullGacha(){ const cost=100; if(silver<cost){ setLog(l=>[{type:'warn', detail:'S 부족'}, ...l]); return; } const tier=drawTierWithLuck(stats.LUK, 0); const item=makeItem(tier); setSilver(s=>s-cost); addItemToInv(item); setLog(l=>[{type:'gacha', detail:{tier, item: `${item.name}(${typeLabel(item.type)})`, cost}}, ...l]); }
+  function earnSilver(kind="normal"){ const luk=stats.LUK; const bias=Math.min(0.02*luk,0.5); let base=0; if(kind==="normal") base=randBetween(4,8); if(kind==="elite") base=randBetween(10,20); if(kind==="boss") base=randBetween(30,80); const gain=Math.round(base*(1+0.5*bias)); setSilver(s=>s+gain); setLog(l=>[{type:'loot', detail:{kind,gain,bias:+bias.toFixed(2)}}, ...l]); }
+  function simulateWave(diff="Normal"){ const ranges={Normal:[60,120], Hard:[120,180], Epic:[180,250]}; const r=ranges[diff]||ranges.Normal; const base=randBetween(r[0],r[1]); const bias=Math.min(0.02*stats.LUK,0.5); const gain=Math.round(base*(1+0.5*bias)); setSilver(s=>s+gain); setLog(l=>[{type:'wave', detail:{diff,gain,bias:+bias.toFixed(2)}}, ...l]); }
+
+  function monthlyGoalXPFromLevel(L){ return clamp(Math.round(1.5 * nxpForLevel(L)), 1500, 3000); }
+  function submitMonthly(){ const xpAuto = monthlyGoalXPFromLevel(lvl); addXp(xpAuto, `월간퀘(이달의 목표, L=${lvl} → +${xpAuto}XP)`); }
+
+  const g = Math.floor(silver / 100), sRem = silver % 100;
+  const dv = useMemo(()=>derive(effStats, gear), [effStats, gear]);
+  function derive(s, gear){
+    const { STR, DEX, VIT, INT, ARC, WIL } = s;
+    const ef = gear.effTotals || {};
+    let ATK = Math.round(10 + 2*STR);
+    let SPD = Math.round(100 + 3*DEX);
+    let HP = Math.round(100 + 10*VIT);
+    let STAM = Math.round(50 + 5*VIT);
+    let MP = Math.round(60 + 8*ARC);
+    let MPRegen = +(1 + 0.1*ARC).toFixed(1);
+    let CritChance = +(5 + 0.5*WIL).toFixed(1);
+    let CritDamage = +(150 + 2*WIL).toFixed(0);
+    let CCResist = +(0 + 0.5*WIL).toFixed(1);
+    let GearATK = gear.wp||0;
+    let GearDEF = gear.df||0;
+    let GearBLOCK = gear.block||0;
+    ATK = Math.round((ATK + GearATK) * (1 + (ef.atk_pct||0)/100));
+    HP = Math.round(HP * (1 + (ef.hp_pct||0)/100));
+    GearDEF = Math.round(GearDEF * (1 + (ef.def_pct||0)/100));
+    CritChance = +(CritChance + (ef.crit_chance_pct||0)).toFixed(1);
+    CCResist = +(CCResist + (ef.resist_cc_pct||0)).toFixed(1);
+    MPRegen = +(MPRegen * (1 + (ef.mpregen_pct||0)/100)).toFixed(1);
+    const BlockChance = Math.min(75, +(GearBLOCK + (ef.block_pct||0)).toFixed(1));
+    const Thorns = ef.thorns||0;
+    const WpFlat = ef.wp_flat||0; ATK += WpFlat;
+    return { ATK, SPD, HP, STAM, MP, MPRegen, CritChance, CritDamage, CCResist, DEF: GearDEF, BLOCK: BlockChance, THORNS: Thorns };
+  }
+
+  function alloc(stat, delta){ if (delta>0 && unspent<=0) return; setStats(s=>({ ...s, [stat]: Math.max(1, (s[stat]||0) + delta) })); if (delta>0) setUnspent(p=>p-1); }
+
+  // ---- 툴팁 상태 ----
+  const [hovered, setHovered] = useState(null); // 인벤 아이템 id
+  const [hoveredEquip, setHoveredEquip] = useState(null); // 장비 슬롯 key
+
+  function effectToLabel(k, v){
+    const map = { atk_pct:'공격력 +', def_pct:'방어력 +', crit_chance_pct:'치명 확률 +', hp_pct:'HP +', resist_cc_pct:'제어저항 +', exp_gain_pct:'XP 획득 +', silver_gain_pct:'실버 획득 +', lifesteal_pct:'생명력 흡수 +', block_pct:'막기 +', thorns:'가시 피해 +', mpregen_pct:'MP 재생 +', wp_flat:'무기공격력 +' };
+    const suffix = (k==='thorns'||k==='wp_flat')? '': '%';
+    return `${map[k]||k}${v}${suffix}`;
+  }
+
+  // ---- 고유효과 테스트 하네스 ----
+  function collectAbilities(){
+    const list = gear.abilities || [];
+    return list.map(a=>({from:a.from, name:a.name, desc:a.desc, when:a.when, chance:a.chance, dur:a.dur, threshold:a.threshold, once:a.once}));
+  }
+
+  function testHits(n=30){
+    const abs = collectAbilities().filter(a=>a.when==='onHit');
+    if(!abs.length){ setLog(l=>[{type:'proc', detail:`기본공격 ${n}회 → 발동 가능한 onHit 능력이 없음`}, ...l]); return; }
+    const summary = {};
+    for(let i=0;i<n;i++){
+      for(const a of abs){
+        const p = a.chance||0; if(Math.random() < p){
+          const key = `${a.name}〈${a.from}〉`;
+          summary[key] = (summary[key]||0) + 1;
+        }
+      }
+    }
+    const msg = Object.keys(summary).length? Object.entries(summary).map(([k,v])=>`${k} x${v}`).join(' · ') : '발동 없음';
+    setLog(l=>[{type:'proc', detail:`기본공격 ${n}회 테스트 → ${msg}`}, ...l]);
+  }
+
+  function testDamaged(n=30){
+    const onBlock = collectAbilities().filter(a=>a.when==='onBlock');
+    const onDamaged = collectAbilities().filter(a=>a.when==='onDamaged');
+    const blockRate = (dv.BLOCK||0)/100;
+    let b=0, d=0; const sumB={}, sumD={};
+    for(let i=0;i<n;i++){
+      const blocked = Math.random() < blockRate; if(blocked){ b++; for(const a of onBlock){ if(Math.random() < (a.chance||0)) { const k=`${a.name}〈${a.from}〉`; sumB[k]=(sumB[k]||0)+1; } } }
+      else { d++; for(const a of onDamaged){ if(Math.random() < (a.chance||0)) { const k=`${a.name}〈${a.from}〉`; sumD[k]=(sumD[k]||0)+1; } } }
+    }
+    const msgB = Object.keys(sumB).length? Object.entries(sumB).map(([k,v])=>`${k} x${v}`).join(' · ') : '—';
+    const msgD = Object.keys(sumD).length? Object.entries(sumD).map(([k,v])=>`${k} x${v}`).join(' · ') : '—';
+    setLog(l=>[{type:'proc', detail:`피격 ${n}회(막기≈${Math.round(blockRate*100)}%) → [막기 ${b}회: ${msgB}] [직격 ${d}회: ${msgD}]`}, ...l]);
+  }
+
+  function testKills(n=5){
+    const abs = collectAbilities().filter(a=>a.when==='onKill');
+    if(!abs.length){ setLog(l=>[{type:'proc', detail:`처치 ${n}회 → 발동 가능한 onKill 능력이 없음`}, ...l]); return; }
+    const summary = {};
+    for(let i=0;i<n;i++){
+      for(const a of abs){ if(Math.random() < (a.chance||0)) { const k=`${a.name}〈${a.from}〉`; summary[k]=(summary[k]||0)+1; } }
+    }
+    const msg = Object.keys(summary).length? Object.entries(summary).map(([k,v])=>`${k} x${v}`).join(' · ') : '발동 없음';
+    setLog(l=>[{type:'proc', detail:`적 처치 ${n}회 테스트 → ${msg}`}, ...l]);
+  }
+
+  function triggerHPBelow(th=0.5){
+    const abs = collectAbilities().filter(a=>a.when==='onBelowHP' && (a.threshold||0.5)<=th+1e-9);
+    if(!abs.length){ setLog(l=>[{type:'proc', detail:`HP ${Math.round(th*100)}% 이하 트리거 → 조건 만족 능력 없음`}, ...l]); return; }
+    const msg = abs.map(a=>`${a.name}〈${a.from}〉`).join(' · ');
+    setLog(l=>[{type:'proc', detail:`HP ${Math.round(th*100)}% 이하 트리거 → ${msg}`}, ...l]);
+  }
+
+  function useUniqueSkill(s){ setLog(l=>[{type:'skill', detail:`고유 스킬 사용: ${s.name}〈${s.from}〉 — ${s.desc} [쿨:${s.cooldown}]`}, ...l]); }
+
+  // ── 세트 정보 컴포넌트 ──
+  const SetInfo = ({ it, context }) => {
+    if(!FF.SETITEM_SYSTEM) return null;
+    if(!it?.setKey) return null;
+    const def = SET_BONUSES[it.setKey];
+    const countNow = countSetEquipped(it.setKey);
+    const applied = (gear.activeSets || []).find(s=>s.key===it.setKey)?.applied || 0;
+    if(!def) return <div className="mt-1 text-[11px] text-amber-700">세트: {it.setKey}</div>;
+    return (
+      <div className="mt-1 text-[11px] text-amber-700">
+        <div>세트: {def.name} — 현재 {countNow}개 / 활성 {applied}세트</div>
+        <div className="mt-1 space-y-0.5 text-amber-800">
+          {Object.entries(def.pieces).sort((a,b)=>parseInt(a[0])-parseInt(b[0])).map(([n, list]) => (
+            <div key={n}>{n}세트: {list.map(e=>effectToLabel(e.k,e.v)).join(' · ')}</div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // ---- UI ----
+  const logLimit = devFast ? 80 : 200;
+  const invList = devFast ? inv.slice(0, 24) : inv;
+
+  return (
+    <div className="p-6 grid gap-4 grid-cols-1 lg:grid-cols-3">
+      {/* Header */}
+      <div className="lg:col-span-3 flex items-center justify-between">
+        <h1 className="text-2xl font-bold flex items-center gap-2"><Trophy className="w-6 h-6"/> 현실 연동 RPG 대시보드</h1>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1"><Coins className="w-5 h-5"/> <span className="font-semibold">{g}G</span> <span className="text-sm text-gray-500">/ {sRem}S</span></div>
+          <button className="px-3 py-1 rounded bg-gray-100" onClick={()=>{ setSilver(1180); setStats({ STR: 10, DEX: 9, VIT: 9, INT: 8, ARC: 8, CHA: 8, WIL: 9, LUK: 7}); setUnspent(0); setLog([]); setDCountWeek(0); setWq({STR_pts:0,DEX_form:0,DEX_wins:0,VIT_recov:0,VIT_weightOK:false,INT_units:0,ARC_read:0,ARC_world:0,WIL_streak:false}); setLvl(7); setXp(2200); setInv([]); setEquip({weaponR:null,weaponL:null,head:null,chest:null,legs:null,arms:null,feet:null,ear1:null,ear2:null,necklace:null,ring1:null,ring2:null}); setDevSeeded(false); }}>리셋</button>
+        </div>
+      </div>
+
+      {/* Dev bar */}
+      <div className="lg:col-span-3 p-3 border rounded-2xl bg-gray-50 flex items-center justify-between">
+        <div className="flex items-center gap-3 text-sm">
+          <label className="flex items-center gap-1"><input type="checkbox" checked={devFast} onChange={(e)=>setDevFast(e.target.checked)} /> Fast Dev</label>
+          <span className="text-gray-400">|</span>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={devMount.equipment} onChange={(e)=>setDevMount(m=>({...m, equipment:e.target.checked}))} /> 장비</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={devMount.inventory} onChange={(e)=>setDevMount(m=>({...m, inventory:e.target.checked}))} /> 인벤</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={devMount.quests} onChange={(e)=>setDevMount(m=>({...m, quests:e.target.checked}))} /> 입력창</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={devMount.weekly} onChange={(e)=>setDevMount(m=>({...m, weekly:e.target.checked}))} /> 주간</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={devMount.test} onChange={(e)=>setDevMount(m=>({...m, test:e.target.checked}))} /> 테스트</label>
+          <label className="flex items-center gap-1"><input type="checkbox" checked={devMount.log} onChange={(e)=>setDevMount(m=>({...m, log:e.target.checked}))} /> 로그</label>
+        </div>
+        <div className="text-xs text-gray-500">Fast Dev: 툴팁 비활성/인벤 24개 제한/로그 80개 제한</div>
+      </div>
+
+      {/* Level Card */}
+      <div className="p-4 border rounded-2xl shadow-sm bg-white">
+        <div className="flex items-center gap-2 mb-2"><Trophy className="w-5 h-5"/><span className="font-semibold">Lv.{lvl}</span></div>
+        <div className="text-sm text-gray-600 mb-2">다음 레벨 필요치(NXP): {nxp} — 남은 {nxpLeft}</div>
+        <div className="w-full h-2 bg-gray-100 rounded"><div className="h-2 bg-gray-800 rounded" style={{ width: `${Math.max(0, Math.min(100, ((xp - curLevelBase) / nxp) * 100))}%` }} /></div>
+        <div className="mt-2 text-xs text-gray-500">NXP(L) = 60 + 20L + 8L²</div>
+      </div>
+
+      {/* Stats & Status */}
+      <div className="p-4 border rounded-2xl shadow-sm bg-white">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2"><Sword className="w-5 h-5"/><span className="font-semibold">스탯 & 상태창</span></div>
+          <div className="text-sm text-gray-500">미분배 포인트: <b>{unspent}</b></div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {Object.keys(stats).map(k=> (
+            <div key={k} className="flex items-center justify-between text-sm">
+              <span>{k}: <b>{stats[k]}</b>{gear.stat[k]? <span className="text-xs text-green-600"> (+{gear.stat[k]})</span>: null}</span>
+              <div className="flex gap-1"><button className="px-2 border rounded" onClick={()=>alloc(k, +1)} disabled={unspent<=0}><Plus className="w-3 h-3"/></button></div>
+            </div>
+          ))}
+        </div>
+        <div className="text-xs text-gray-600 mb-1">파생치(장비/효과/세트 포함)</div>
+        <div className="grid grid-cols-2 gap-1 text-sm">
+          <div>ATK: <b>{dv.ATK}</b></div>
+          <div>DEF/막기: <b>{dv.DEF}</b> / <b>{dv.BLOCK}%</b></div>
+          <div>HP/STM: <b>{dv.HP}</b> / <b>{dv.STAM}</b></div>
+          <div>MP/재생: <b>{dv.MP}</b> / <b>{dv.MPRegen}</b></div>
+          <div>치명: <b>{dv.CritChance}% / {dv.CritDamage}%</b></div>
+          <div>저항: <b>CC {dv.CCResist}%</b>{dv.THORNS? <span> · 가시 {dv.THORNS}</span>: null}</div>
+        </div>
+        {FF.SETITEM_SYSTEM && gear.activeSets?.length ? (
+          <div className="mt-2 text-xs text-indigo-700">활성 세트: {gear.activeSets.map(s=>`${SET_BONUSES[s.key].name} ${s.applied}세트(${s.count}개 장착)`).join(' · ')}</div>
+        ) : null}
+        {gear.abilities?.length ? (
+          <div className="mt-2 text-xs text-emerald-700">고유 능력: {gear.abilities.map(a=>`${a.name}〈${a.from}〉`).join(' · ')}</div>
+        ) : null}
+        {gear.skills?.length ? (
+          <div className="mt-1 text-xs text-rose-700">고유 스킬: {gear.skills.map(s=>`${s.name}〈${s.from}〉[쿨:${s.cooldown}]`).join(' · ')}</div>
+        ) : null}
+      </div>
+
+      {/* 입력창 — 퀘스트 */}
+      {devMount.quests && (
+      <div className="p-4 border rounded-2xl shadow-sm bg-white">
+        <div className="flex items-center gap-2"><Settings2 className="w-5 h-5"/><span className="font-semibold">입력창 — 퀘스트</span></div>
+        <div className="text-sm font-medium mt-1">일일퀘스트</div>
+        <label className="text-sm flex items-center gap-2 mt-1"><input type="checkbox" checked={daily.ex} onChange={(e)=>setDaily({...daily, ex:e.target.checked})}/> 헬스/홈트 (+{CFG.xpDaily.ex}XP)</label>
+        <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={daily.study} onChange={(e)=>setDaily({...daily, study:e.target.checked})}/> 공부/수업 (+{CFG.xpDaily.study}XP)</label>
+        <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={daily.sleep} onChange={(e)=>setDaily({...daily, sleep:e.target.checked})}/> 수면 (+{CFG.xpDaily.sleep}XP)</label>
+        <button className="mt-2 px-3 py-2 rounded bg-black text-white" onClick={submitDaily}>일일퀘 완료(체크수만큼 XP)</button>
+        <div className="text-sm font-medium mt-3">월간</div>
+        <button className="px-3 py-2 rounded border" onClick={submitMonthly}>월간 퀘스트: 이달의 목표(자동 XP)</button>
+      </div>
+      )}
+
+      {/* Weekly Controls */}
+{ /* [PATCH:UI:DATA-IMPORT] */ true && (
+<div className="mt-2 flex items-center gap-2">
+          <input id="fileData" type="file" multiple accept=".json,application/json"
+            className="text-sm"
+            onChange={async e=>{
+              const files = Array.from(e.target.files||[]);
+              const merged = {};
+              for (const f of files){
+                const t = await f.text();
+                try{
+                  const json=JSON.parse(t);
+                  ['ITEM_DEFS','SET_BONUSES','ITEM_POOL','THEMES'].forEach(k=>{
+                    if (json && json[k]!=null){
+                      if (!merged[k]) merged[k] = Array.isArray(json[k]) ? [] : (typeof json[k]==='object'? {}: undefined);
+                      if (Array.isArray(json[k])){
+                        (merged[k] = merged[k] || []).push(...json[k]);
+                      } else if (typeof json[k]==='object'){
+                        Object.assign(merged[k], json[k]);
+                      }
+                    }
+                  });
+                }catch(err){ alert(`JSON 파싱 실패: ${f.name}`); }
+              }
+              try{
+                localStorage.setItem('dashDataV1', JSON.stringify(merged));
+              }catch(e){ console.warn('localStorage save fail', e); }
+              applyDashDataV1(merged);
+              e.target.value = '';
+            }} />
+          <button className="px-2 py-1 border rounded text-sm" onClick={()=>{
+            try{
+              const dump = {
+                ITEM_DEFS: (typeof ITEM_DEFS?.slice==='function')? ITEM_DEFS.slice(): ITEM_DEFS,
+                SET_BONUSES: SET_BONUSES,
+                ITEM_POOL: (typeof ITEM_POOL?.slice==='function')? ITEM_POOL.slice(): ITEM_POOL,
+                THEMES: (typeof THEMES?.slice==='function')? THEMES.slice(): THEMES,
+              };
+              const blob = new Blob([JSON.stringify(dump,null,2)], {type:'application/json'});
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = 'dashDataV1.json'; a.click(); URL.revokeObjectURL(url);
+            }catch(e){ console.warn('export fail', e); }
+          }}>데이터 내보내기</button>
+          <button className="px-2 py-1 border rounded text-sm" onClick={()=>{
+            try{ localStorage.removeItem('dashDataV1'); alert('임포트 데이터 초기화 완료. 새로고침하면 기본 데이터로 돌아갑니다.'); }
+            catch(e){ console.warn('reset fail', e); }
+          }}>임포트 초기화</button>
+        </div>
+)}
+{devMount.weekly && (
+      <div className="p-4 border rounded-2xl shadow-sm bg-white flex flex-col gap-3">
+        <div className="flex items-center gap-2"><Dice6 className="w-5 h-5"/><span className="font-semibold">주간 결산 & 주간퀘</span></div>
+        <div className="text-xs text-gray-600">일일퀘 완료 버튼을 누르면 이번 주 D_count가 누적됩니다. (주간 결산 시 자동 사용)</div>
+        <button className="px-3 py-2 rounded bg-black text-white" onClick={rollWeekly}>주간 결산 실행(P/K 배분 + 주간퀘 XP)</button>
+      </div>
+      )}
+
+      {/* Weekly Quest Input */}
+      {devMount.weekly && (
+      <div className="p-4 border rounded-2xl shadow-sm bg-white flex flex-col gap-2">
+        <div className="flex items-center gap-2"><ClipboardList className="w-5 h-5"/><span className="font-semibold">주간퀘 입력(달성형)</span></div>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <label className="flex items-center justify-between">STR 근력세트(×1점)
+            <input type="number" min={0} max={20} value={wq.STR_pts} onChange={(e)=>setWq({...wq, STR_pts: clamp(parseInt(e.target.value||0),0,20)})} className="w-20 border rounded px-2 py-1"/>
+          </label>
+          <label className="flex items-center justify-between">DEX 폼훈련 10m 단위
+            <input type="number" min={0} max={20} value={wq.DEX_form} onChange={(e)=>setWq({...wq, DEX_form: clamp(parseInt(e.target.value||0),0,20)})} className="w-20 border rounded px-2 py-1"/>
+          </label>
+          <label className="flex items-center justify-between">DEX 승리(주 5 상한)
+            <input type="number" min={0} max={5} value={wq.DEX_wins} onChange={(e)=>setWq({...wq, DEX_wins: clamp(parseInt(e.target.value||0),0,5)})} className="w-20 border rounded px-2 py-1"/>
+          </label>
+          <label className="flex items-center justify-between">VIT 회복 루틴 10m
+            <input type="number" min={0} max={20} value={wq.VIT_recov} onChange={(e)=>setWq({...wq, VIT_recov: clamp(parseInt(e.target.value||0),0,20)})} className="w-20 border rounded px-2 py-1"/>
+          </label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={wq.VIT_weightOK} onChange={(e)=>setWq({...wq, VIT_weightOK:e.target.checked})}/> VIT 체중 +0.1~0.3kg(주 +2점)</label>
+          <label className="flex items-center justify-between">INT 30m 단위
+            <input type="number" min={0} max={24} value={wq.INT_units} onChange={(e)=>setWq({...wq, INT_units: clamp(parseInt(e.target.value||0),0,24)})} className="w-20 border rounded px-2 py-1"/>
+          </label>
+          <label className="flex items-center justify-between">ARC 독서 20m
+            <input type="number" min={0} max={30} value={wq.ARC_read} onChange={(e)=>setWq({...wq, ARC_read: clamp(parseInt(e.target.value||0),0,30)})} className="w-20 border rounded px-2 py-1"/>
+          </label>
+          <label className="flex items-center justify-between">ARC 세계관 200자
+            <input type="number" min={0} max={30} value={wq.ARC_world} onChange={(e)=>setWq({...wq, ARC_world: clamp(parseInt(e.target.value||0),0,30)})} className="w-20 border rounded px-2 py-1"/>
+          </label>
+          <label className="flex items-center gap-2 col-span-2"><input type="checkbox" checked={wq.WIL_streak} onChange={(e)=>setWq({...wq, WIL_streak:e.target.checked})}/> WIL 7일 연속 All-Clear 달성</label>
+        </div>
+        <div className="text-xs text-gray-600 mt-1">
+          {(() => { const p = computeWeeklyQuestXP(); return (
+            <div>
+              <div>미리보기: STR {wq.STR_pts}/4 {wq.STR_pts>=4?"✅":"—"} · DEX {(wq.DEX_form + Math.min(wq.DEX_wins,5))}/5 {(wq.DEX_form + Math.min(wq.DEX_wins,5))>=5?"✅":"—"} · VIT {(wq.VIT_recov + (wq.VIT_weightOK?2:0))}/6 {(wq.VIT_recov + (wq.VIT_weightOK?2:0))>=6?"✅":"—"} · INT {wq.INT_units}/6 {wq.INT_units>=6?"✅":"—"} · ARC {(wq.ARC_read + wq.ARC_world)}/5 {(wq.ARC_read + wq.ARC_world)>=5?"✅":"—"} · WIL {wq.WIL_streak?"✅":"—"}</div>
+              <div>이번 주 주간퀘 예상 XP 합계: <b>{p.total}</b> XP</div>
+            </div>
+          ); })()}
+        </div>
+      </div>
+      )}
+
+      {/* 전투/웨이브 & 상점 */}
+      <div className="p-4 border rounded-2xl shadow-sm bg-white flex flex-col gap-3">
+        <div className="flex items-center gap-2"><Sword className="w-5 h-5"/><span className="font-semibold">전투/웨이브 & 상점</span></div>
+        <div className="flex gap-2">
+          <button className="px-3 py-2 rounded bg-gray-900 text-white" onClick={()=>earnSilver("normal")}>일반 전투(+S)</button>
+          <button className="px-3 py-2 rounded bg-gray-900 text-white" onClick={()=>earnSilver("elite")}>정예 전투(+S)</button>
+          <button className="px-3 py-2 rounded bg-gray-900 text-white" onClick={()=>earnSilver("boss")}>보스 전투(+S)</button>
+        </div>
+        <div className="flex gap-2">
+          <button className="px-3 py-2 rounded border" onClick={pullGacha}><ShoppingCart className="w-4 h-4 inline mr-1"/>랜덤 뽑기(100S)</button>
+          <button className="px-3 py-2 rounded border" onClick={()=>simulateWave("Normal")}><Waves className="w-4 h-4 inline mr-1"/>웨이브: Normal</button>
+          <button className="px-3 py-2 rounded border" onClick={()=>simulateWave("Hard")}><Waves className="w-4 h-4 inline mr-1"/>웨이브: Hard</button>
+          <button className="px-3 py-2 rounded border" onClick={()=>simulateWave("Epic")}><Waves className="w-4 h-4 inline mr-1"/>웨이브: Epic</button>
+        </div>
+      </div>
+
+      {/* 가상 전투 테스트(고유능력/스킬 발동) */}
+      {devMount.test && (
+      <div className="p-4 border rounded-2xl shadow-sm bg-white flex flex-col gap-2">
+        <div className="font-semibold">가상 전투 테스트</div>
+        <div className="text-xs text-gray-600">장착 중인 장비의 고유능력/스킬 발동을 시뮬레이션합니다. (테스트 로그는 아래 로그창에 기록)</div>
+        <div className="flex flex-wrap gap-2 mt-1">
+          <button className="px-3 py-2 rounded border" onClick={()=>testHits(30)}>기본공격 30회</button>
+          <button className="px-3 py-2 rounded border" onClick={()=>testDamaged(30)}>피격 30회(막기 포함)</button>
+          <button className="px-3 py-2 rounded border" onClick={()=>testKills(5)}>적 처치 5회</button>
+          <button className="px-3 py-2 rounded border" onClick={()=>triggerHPBelow(0.5)}>HP 50% 이하</button>
+        </div>
+        {gear.skills?.length ? (
+          <div className="mt-2">
+            <div className="text-sm font-medium">고유 스킬</div>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {gear.skills.map((s,idx)=> (
+                <button key={idx} className="px-3 py-1 rounded bg-black text-white" onClick={()=>useUniqueSkill(s)}>{s.name}〈{s.from}〉 사용</button>
+              ))}
+            </div>
+          </div>
+        ): null}
+      </div>
+      )}
+
+      {/* Equipment (툴팁 적용) */}
+      {devMount.equipment && (
+      <div className="p-4 border rounded-2xl shadow-sm bg-white lg:col-span-2 flex flex-col gap-2">
+        <div className="font-semibold">장비</div>
+        {/* 무기 */}
+        <div className="text-sm font-medium mt-1">무기</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {[
+            ['오른손','weaponR'], ['왼손','weaponL']
+          ].map(([label,slot])=> {
+            const it = equip[slot];
+            return (
+              <div key={slot} className="relative flex items-center justify-between text-sm border rounded px-2 py-1"
+                   onMouseEnter={()=>setHoveredEquip(slot)} onMouseLeave={()=>setHoveredEquip(null)}>
+                <div>
+                  <span className="text-gray-600 inline-block w-16">{label}</span>
+                  {it ? (<>
+                    <b className="ml-2">{it.name}</b> <span className="text-xs text-gray-500">[{it.tier}/{typeLabel(it.type)}]</span>
+                    <span className="text-xs text-gray-600 ml-2">{it.wp?`ATK ${it.wp}`:''}{it.df?` · DEF ${it.df}`:''}{it.block?` · BLK ${it.block}%`:''}</span>
+                  </>) : <span className="ml-2 text-gray-400">— 미장착 —</span>}
+                </div>
+                <div className="flex gap-2">{it && <button className="px-2 py-1 border rounded" onClick={()=>unequip(slot)}>해제</button>}</div>
+                {!devFast && hoveredEquip===slot && it && (
+                  <div className="absolute right-2 top-full mt-1 text-[11px] px-2 py-1 bg-white border rounded shadow">{FF.ADVANCED_TOOLTIP && it.theme && (<div className="mt-1 text-[11px] text-gray-500">테마: {it.theme}</div>)}
+
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* 방어구 */}
+        <div className="text-sm font-medium mt-3">방어구</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {[
+            ['머리','head'], ['상의','chest'], ['하의','legs'], ['팔','arms'], ['발(신발)','feet']
+          ].map(([label,slot])=> {
+            const it = equip[slot];
+            return (
+              <div key={slot} className="relative flex items-center justify-between text-sm border rounded px-2 py-1"
+                   onMouseEnter={()=>setHoveredEquip(slot)} onMouseLeave={()=>setHoveredEquip(null)}>
+                <div>
+                  <span className="text-gray-600 inline-block w-16">{label}</span>
+                  {it ? (<>
+                    <b className="ml-2">{it.name}</b> <span className="text-xs text-gray-500">[{it.tier}/{typeLabel(it.type)}]</span>
+                    <span className="text-xs text-gray-600 ml-2">{it.df?`DEF ${it.df}`:''}</span>
+                  </>) : <span className="ml-2 text-gray-400">— 미장착 —</span>}
+                </div>
+                <div className="flex gap-2">{it && <button className="px-2 py-1 border rounded" onClick={()=>unequip(slot)}>해제</button>}</div>
+                {!devFast && hoveredEquip===slot && it && (
+                  <div className="absolute right-2 top-full mt-1 text-[11px] px-2 py-1 bg-white border rounded shadow">{FF.ADVANCED_TOOLTIP && it.theme && (<div className="mt-1 text-[11px] text-gray-500">테마: {it.theme}</div>)}
+
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* 장신구 */}
+        <div className="text-sm font-medium mt-3">장신구</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {[
+            ['귀걸이 1','ear1'], ['귀걸이 2','ear2'], ['목걸이','necklace'], ['반지 1','ring1'], ['반지 2','ring2']
+          ].map(([label,slot])=> {
+            const it = equip[slot];
+            return (
+              <div key={slot} className="relative flex items-center justify-between text-sm border rounded px-2 py-1"
+                   onMouseEnter={()=>setHoveredEquip(slot)} onMouseLeave={()=>setHoveredEquip(null)}>
+                <div>
+                  <span className="text-gray-600 inline-block w-16">{label}</span>
+                  {it ? (<>
+                    <b className="ml-2">{it.name}</b> <span className="text-xs text-gray-500">[{it.tier}/{typeLabel(it.type)}]</span>
+                  </>) : <span className="ml-2 text-gray-400">— 미장착 —</span>}
+                </div>
+                <div className="flex gap-2">{it && <button className="px-2 py-1 border rounded" onClick={()=>unequip(slot)}>해제</button>}</div>
+                {!devFast && hoveredEquip===slot && it && (
+                  <div className="absolute right-2 top-full mt-1 text-[11px] px-2 py-1 bg-white border rounded shadow">{FF.ADVANCED_TOOLTIP && it.theme && (<div className="mt-1 text-[11px] text-gray-500">테마: {it.theme}</div>)}
+
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      )}
+
+      {/* Inventory + 툴팁 */}
+      {devMount.inventory && (
+      <div className="p-4 border rounded-2xl shadow-sm bg-white flex flex-col gap-2 lg:col-span-1">
+        <div className="font-semibold">인벤토리</div>
+        {invList.length===0 ? (
+          <div className="text-sm text-gray-500">보유 아이템이 없습니다. 상점의 랜덤 뽑기나 전투 보상으로 획득해보세요.</div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2">
+            {invList.map(it=> (
+              <div key={it.id} className="relative border rounded p-2 text-sm flex flex-col gap-1"
+                   onMouseEnter={()=>setHovered(it.id)} onMouseLeave={()=>setHovered(null)}>
+                <div>
+                  <b>{it.name}</b> <span className="text-xs text-gray-500">[{it.tier}/{typeLabel(it.type)}]</span>
+                </div>
+                <div className="text-xs text-gray-600">
+                  {it.wp?`ATK ${it.wp}`:''}{it.df?` · DEF ${it.df}`:''}{it.block?` · BLK ${it.block}%`:''}
+                </div>
+                {Object.keys(it.mod||{}).length>0 && (
+                  <div className="text-xs text-green-700">{Object.entries(it.mod).map(([k,v])=>`${k}+${v}`).join(', ')}</div>
+                )}
+                {it.effects?.length>0 && (
+                  <div className="text-[11px] text-indigo-700">특수효과: {it.effects.map(e=>effectToLabel(e.k,e.v)).join(' · ')}</div>
+                )}
+                {it.uniqueAbilities?.length>0 && (
+                  <div className="text-[11px] text-emerald-700">고유 능력: {it.uniqueAbilities.map(a=>a.name).join(' · ')}</div>
+                )}
+                {it.uniqueSkill && (
+                  <div className="text-[11px] text-rose-700">고유 스킬: {it.uniqueSkill.name} [쿨:{it.uniqueSkill.cooldown}]</div>
+                )}
+                {it.setKey && (
+                  <div className="text-[11px] text-amber-700">세트: {SET_BONUSES[it.setKey]?.name || it.setKey}</div>
+                )}
+                <div className="mt-1 flex gap-2">
+                  {!(it.type==="material" || it.type==="consumable") && (
+                    <button className="px-2 py-1 rounded bg-black text-white" onClick={()=>equipItem(it.id)}>장착</button>
+                  )}
+                  <button className="px-2 py-1 border rounded" onClick={()=>sellItem(it.id)}>판매(+{SELL_PRICE[it.tier]||5}S)</button>
+                </div>
+                {!devFast && hovered===it.id && (
+                  <div className="absolute right-2 top-full mt-1 text-[11px] px-2 py-1 bg-white border rounded shadow">{FF.ADVANCED_TOOLTIP && it.theme && (<div className="mt-1 text-[11px] text-gray-500">테마: {it.theme}</div>)}
+
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* Log */}
+      {devMount.log && (
+      <div className="lg:col-span-3 p-4 border rounded-2xl shadow-sm bg-white">
+        <div className="font-semibold mb-2">로그</div>
+        <div className="space-y-1 max-h-64 overflow-auto">
+          {log.slice(0,logLimit).map((e, i)=>{
+            if(e.type==="xp") return <div key={i} className="text-sm">✨ XP +{e.detail.amount} ({e.detail.reason})</div>
+            if(e.type==="levelup") return <div key={i} className="text-sm">🆙 레벨업! → Lv.{e.detail.lvl} / 포인트 +{e.detail.points}</div>
+            if(e.type==="gacha") return <div key={i} className="text-sm">🎲 가챠(−{e.detail.cost}S) → <b>{e.detail.tier}</b> : {e.detail.item}</div>
+            if(e.type==="loot") return <div key={i} className="text-sm">💰 전투({e.detail.kind}) → +{e.detail.gain}S (bias {e.detail.bias})</div>
+            if(e.type==="shop") return <div key={i} className="text-sm">🛒 {e.detail.buy}</div>
+            if(e.type==="weekly") return <div key={i} className="text-sm">📈 주간 결산 → P_base {e.detail.P_base} + LUK {e.detail.LUK_Bonus} = P{e.detail.P_total}, K={e.detail.K}{e.detail.alloc?.length?` | 배분: ${e.detail.alloc.map(a=>`${a.stat}+${a.delta}`).join(", ")}`:""}</div>
+            if(e.type==="wave") return <div key={i} className="text-sm">🌊 웨이브({e.detail.diff}) → +{e.detail.gain}S (bias {e.detail.bias})</div>
+            if(e.type==="equip") return <div key={i} className="text-sm">🧰 장착: {e.detail.slot} → {e.detail.name} [{e.detail.tier}]</div>
+            if(e.type==="unequip") return <div key={i} className="text-sm">🧰 해제: {e.detail.slot} ({e.detail.name})</div>
+            if(e.type==="warn") return <div key={i} className="text-sm text-red-600">⚠️ {e.detail}</div>
+            if(e.type==="proc") return <div key={i} className="text-sm">🧪 {e.detail}</div>
+            if(e.type==="skill") return <div key={i} className="text-sm">🔥 {e.detail}</div>
+            return <div key={i} className="text-sm">{JSON.stringify(e)}</div>
+          })}
+        </div>
+      </div>
+      )}
+    </div>
+  );
+}
+
+
+window.Dashboard = Dashboard;
+
+    </script>
+    <script type="text/babel" data-presets="react">
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        (function boot(){
+          if (window.Dashboard) {
+            console.log('[probe] boot render');
+            root.render(React.createElement(window.Dashboard));
+          } else {
+            setTimeout(boot, 50);
+          }
+        })();
+    </script>
+</body>
 </html>

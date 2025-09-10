@@ -3,11 +3,55 @@
   <head>
     <meta charset="utf-8" />
     <title>my fantasy</title>
-    <style>body{font-family:system-ui,Segoe UI,Arial;margin:40px} .tag{display:inline-block;background:#eee;padding:4px 8px;border-radius:6px}</style>
+    <style>
+      body{font-family:system-ui,Segoe UI,Arial;margin:40px}
+      .tag{display:inline-block;background:#eee;padding:4px 8px;border-radius:6px}
+      .row{margin:12px 0}
+      .meter{height:10px;background:#eee;border-radius:6px;overflow:hidden;max-width:360px}
+      .meter #bar{height:100%;width:5%}
+      button{padding:8px 12px;border-radius:8px;border:1px solid #ccc;background:#fafafa;cursor:pointer}
+      button:active{transform:translateY(1px)}
+    </style>
   </head>
   <body>
-    <h1>🚀 my fantasy</h1>
-    <p class="tag">자동업데이트 준비 완료</p>
+    <h1>🚀 my fantasy <span id="ver" class="tag"></span></h1>
+
+    <div class="row">
+      <button id="check">업데이트 확인</button>
+      <span id="status" class="tag">대기 중</span>
+    </div>
+
+    <div class="meter"><div id="bar"></div></div>
+
+    <script>
+      (async () => {
+        const ver = await window.api.getVersion();
+        document.getElementById("ver").textContent = "v" + ver;
+
+        const btn = document.getElementById("check");
+        const status = document.getElementById("status");
+        const bar = document.getElementById("bar");
+
+        btn.addEventListener("click", () => {
+          status.textContent = "업데이트 확인 중...";
+          window.api.checkForUpdates();
+        });
+
+        window.api.onUpdateAvailable(() => {
+          status.textContent = "새 버전 발견! 다운로드 중...";
+          bar.style.width = "10%";
+        });
+
+        window.api.onUpdateProgress((p) => {
+          status.textContent = `다운로드 ${p.percent.toFixed(1)}%`;
+          bar.style.width = Math.max(5, Math.min(100, p.percent)) + "%";
+        });
+
+        window.api.onUpdateDownloaded(() => {
+          status.textContent = "다운로드 완료. 재시작 대기...";
+          bar.style.width = "100%";
+        });
+      })();
+    </script>
   </body>
 </html>
-

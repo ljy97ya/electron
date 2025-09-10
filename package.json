@@ -1,27 +1,58 @@
 ﻿{
-  "name": "dashboard-runner",
-  "version": "0.2.0",
-  "private": true,
-  "description": "대시보드 러너 (스프린트 3 · 사전빌드)",
-  "author": "ljy97",
+  "name": "my-electron-app",
+  "version": "0.1.0",
+  "description": "auto-update demo",
   "main": "main.js",
+  "author": "ljy97ya",
+  "license": "MIT",
   "scripts": {
-    "start": "electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder"
-  },
-  "devDependencies": {
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "dev": "electron .",
+    "pack": "electron-builder -p never",
+    "release": "electron-builder -p always"
   },
   "build": {
-    "appId": "com.ljy97.dashboardrunner",
-    "productName": "대시보드 러너",
+    "appId": "com.ljy97ya.electron",
+    "productName": "MyElectronApp",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "assets/**",
+      "node_modules/**",
+      "package.json"
+    ],
     "directories": { "buildResources": "build" },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ljy97ya",
+        "repo": "electron",
+        "releaseType": "release"
+      }
+    ],
     "win": {
-      "target": [ "nsis", "portable" ],
+      "target": "nsis",
       "icon": "build/icon.ico"
     },
-    "publish": []
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "build/icon.icns"
+    }
+  },
+  "dependencies": {
+    "electron": "^32.0.0",
+    "electron-log": "^5.2.0",
+    "electron-updater": "^6.3.4"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "cross-env": "^7.0.3",
+    "electron-builder": "^24.13.3"
   }
 }

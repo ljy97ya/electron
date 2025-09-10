@@ -1,6 +1,6 @@
 {
   "name": "my-electron-app",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "auto-update demo",
   "main": "main.js",
   "author": "ljy97ya",

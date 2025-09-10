@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "my-electron-app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "auto-update demo",
   "main": "main.js",
   "author": "ljy97ya",
@@ -21,7 +21,9 @@
       "node_modules/**",
       "package.json"
     ],
-    "directories": { "buildResources": "build" },
+    "directories": {
+      "buildResources": "build"
+    },
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "publish": [
       {
@@ -41,7 +43,10 @@
       "allowToChangeInstallationDirectory": false
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "build/icon.icns"
     }
   },

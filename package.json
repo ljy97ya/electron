@@ -51,13 +51,13 @@
     }
   },
   "dependencies": {
-    "electron": "^32.0.0",
     "electron-log": "^5.2.0",
     "electron-updater": "^6.3.4"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",
     "cross-env": "^7.0.3",
+    "electron": "^32.0.0",
     "electron-builder": "^24.13.3"
   }
 }

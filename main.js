@@ -42,3 +42,16 @@ autoUpdater.on("update-downloaded", () => {
   });
   if (choice === 0) autoUpdater.quitAndInstall();
 });
+/** === Show version in window title ===
+ * 기존 app/BrowserWindow 선언을 그대로 사용합니다(재선언 없음).
+ */
+app.on("browser-window-created", (_, window) => {
+  const v = app.getVersion();
+  window.webContents.on("did-finish-load", () => {
+    try {
+      const base = window.getTitle() || "my fantasy";
+      window.setTitle(`${base} v${v}`);
+    } catch {}
+  });
+});
+

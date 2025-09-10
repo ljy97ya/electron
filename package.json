@@ -12,7 +12,7 @@
   },
   "build": {
     "appId": "com.ljy97ya.electron",
-    "productName": "MyElectronApp",
+    "productName": "my fantasy",
     "files": [
       "main.js",
       "preload.js",

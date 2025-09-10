@@ -1,0 +1,9 @@
+/* renderer.css */
+:root { color-scheme: dark; }
+body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0f19; color: #e5e7eb; }
+header { padding: 16px 20px; border-bottom: 1px solid #1f2937; background: #0f1627; position: sticky; top: 0; }
+.container { padding: 24px; max-width: 1080px; margin: 0 auto; }
+.card { background: #0f1627; border: 1px solid #1f2937; border-radius: 14px; padding: 20px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+.muted { color: #9ca3af; font-size: 14px; }
+.btn { display:inline-block; padding:10px 14px; border-radius:10px; border:1px solid #334155; background:#111827; color:#e5e7eb; cursor:pointer; }
+.btn:hover { background:#0b1220; }
